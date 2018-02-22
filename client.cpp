@@ -6,43 +6,77 @@ int main( int argc, char * argv[] ) {
         return -1;
     }
 
+    myDownload file;  //待下载文件信息
+    file.filename = argv[2];
     const char * ip = argv[1];
-    const int thread_num = atoi( argv[3] );
+    file.info.num = atoi( argv[3] );
 
-    int file_fd = open(argv[2], O_CREAT|O_TRUNC|O_RDWR, S_IRWXU);  //新建文件
-    if ( file_fd < 0 ) {
+    struct sockaddr_in address;
+    address.sin_family = AF_INET;
+    address.sin_port = htons( PORT );
+    inet_pton( AF_INET, ip, &address.sin_addr );
+
+    int sock_fd = socket( AF_INET, SOCK_STREAM, 0 );
+    if ( sock_fd < 0 ) {
+        err(__LINE__);
+    }
+    file.sock_fd = sock_fd;
+
+    int ret = connect( sock_fd, ( struct sockaddr * )&address,
+                        sizeof( address ) );
+    if ( ret < 0 ) {
         err( __LINE__ );
     }
-    close( file_fd );
 
-    /* epoll */
+/* epoll */
     epoll_event events[ MAX_EVENT_NUMBER ];  //内核事件表信息
-    int epoll_fd = epoll_create( thread_num );
+    int epoll_fd = epoll_create( 5 );
     if ( epoll_fd < 0 ) {
         err( __LINE__ );
     }
 
-    myDownload file[ thread_num ];
-    pthread_t thread[ thread_num ];  //所有线程号
+    addfd( epoll_fd, sock_fd );
 
-    /* 创建 MAX_THREAD_NUM 个线程*/
-    for( int i = 0; i < thread_num; i++ ) {
-        /* 初始化信息 */
-        file[i].address.sin_family = AF_INET;
-        file[i].address.sin_port = htons( PORT );
-        inet_pton( AF_INET, ip, &file[i].address.sin_addr );
-        file[i].info.filename = argv[2];
-        file[i].info.num = thread_num;
-        file[i].info.i = i;
+    //发送存储文件信息的结构体
+    ret = send( sock_fd, &file, sizeof( file ), 0 );
+    if ( ret <= 0 ) {
+        err( __LINE__ );
+    }
+// cout << ret << ' ' << sizeof( file ) << endl;
+
+    pthread_t threads[MAX_THREAD_NUM];
+    int count = 0;  //记录新开线程数
+    //epoll监听
+    while( count < file.info.num ) {
+        ret = epoll_wait( epoll_fd, events, MAX_EVENT_NUMBER, -1 );
+        if ( ret < 0 ) {
+            cout << "epoll_wait failure\n";
+            break;
+        }
+
+        for( int i = 0; i < ret; i++ ) {
+            int fd = events[i].data.fd;
+            if ( events[i].events & EPOLLIN ) {  //有新文件信息回传
+myDownload tem;
+int r = recv( fd, &tem, sizeof( tem ), 0 );
+cout << "r = " << r << " , tem = " << tem.info.buf << endl;
+                pthread_create( &threads[count++], NULL, file.download, (void *)&file );
+            }
+        }
+    }
+
+    //等待线程结束
+    for( int i = 0; i < count; i++ ) {
+        pthread_join( threads[i], NULL );
+    }
+
+    // //合并文件
+    // for( int i = 0; i < file.info.num; i++ ) {
         
-        pthread_create( &thread[i], NULL, myDownload::download, NULL );
-    }
-
-    for( int i = 0; i < thread_num; i++ ) {
-        pthread_join( thread[i], NULL );
-    }
+    // }
 
     cout << "download file " << argv[2] << " success\n";
+    close( sock_fd );
 
     return 0;
 }
