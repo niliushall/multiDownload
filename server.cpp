@@ -2,7 +2,6 @@
 
 int main(int argc, char * argv[]) {
     const char *ip = argv[1];
-
     struct sockaddr_in address;
     memset( &address, 0, sizeof( address ) );
     address.sin_family = AF_INET;
@@ -29,11 +28,10 @@ int main(int argc, char * argv[]) {
     if ( epoll_fd < 0 ) {
         err( __LINE__ );
     }
-    addfd( epoll_fd, sock_fd );
+    addfd( epoll_fd, sock_fd, false );
 
     while( true ) {
         ret = epoll_wait( epoll_fd, events, MAX_EVENT_NUMBER, -1 );
-// cout << "ret = " << ret << endl;
         if ( ret < 0 ) {
             cout << "epoll_wait error\n";
             return -1;
@@ -41,59 +39,66 @@ int main(int argc, char * argv[]) {
 
         for( int i = 0; i < ret; i++ ) {
             int fd = events[i].data.fd;
-            if ( fd == sock_fd ) {
+            if ( fd == sock_fd ) {  //新连接
                 struct sockaddr_in client;
                 socklen_t client_length = sizeof( client );
                 int conn_fd = accept( sock_fd, ( struct sockaddr * )&client,
                                         &client_length );
-// cout << "accept = " << accept << endl;
                 if ( conn_fd <= 0 ) {
                     cout << "accept error\n";
                     return -1;
                 }
-                addfd( epoll_fd, conn_fd );
-myDownload te;
-strcpy(te.info.buf , "good");
-cout << "fd = " << fd << endl;
-int s = send( fd, &te, sizeof(te), 0 );
-cout << "jinjin\n";
-cout << "s = " << s << endl;
-
-            } else if ( events[i].events & EPOLLIN ) {
-                myDownload tempfile;
-                int retu = recv( fd, &tempfile, sizeof( tempfile ), 0 );
-cout << "retu = " << retu << endl;
-                if ( retu < 0 ) {
+                addfd( epoll_fd, conn_fd, true );
+            } else if ( events[i].events & EPOLLIN ) {  //有信息传入
+                myDownload file;
+                int retu = recv( fd, &file, sizeof( file ), 0 );
+                if ( retu < 0 ) {  //出错
                     cout << "thread " << fd << " error\n";
                     break;
-                } else if ( !retu ) {
+                } else if ( !retu ) {  //关闭连接
                     cout << "thread " << fd << "exit\n";
                     close( fd );
-                } else {
+                } else {  //正常接收，返回信息
+
+                    /* 获取文件大小 */
                     struct stat st;  
                     memset(&st, 0, sizeof(st));  
                     char filename[100];
-                    strcpy( filename, tempfile.filename.c_str() );
+                    strcpy( filename, file.filename );
                     stat(filename, &st);  
-                    int filesize = st.st_size;  
+                    int filesize = st.st_size;
 
-                    FILE *fp = fopen( filename, "r" );
-
-                    for( int i = 0; i < tempfile.info.num; i++ ) {
-                        tempfile.info.i = i;
-                        fseek( fp, filesize / tempfile.info.num * i, SEEK_SET );
-                        while( ftell( fp ) < ( filesize / tempfile.info.num * ( i + 1 ) ) ) {
-                            fread( tempfile.info.buf, BUFFER_SIZE, 1, fp );
-                            send( fd, &tempfile, sizeof( tempfile ), 0 );
-                        }
+                    /* 发送文件 */
+                    int j;
+                    int file_fd = open( file.filename, O_RDONLY );
+                    for( j = 0; j < file.info.num - 1; j++ ) {
+                        send( fd, &j, sizeof( j ), 0 );  //发送当前为第几个部分
+                        off_t offset = filesize / file.info.num * j;
+                        int ret = sendfile( fd, file_fd, &offset, filesize / file.info.num );
+                        sleep(1);
+    printf("size=%d, send=%d %d\n", filesize, ret, filesize / file.info.num);
                     }
-                }
+
+                    /* 发送最后一部分 */
+                    int s = send( fd, &j, sizeof( j ), 0 );  //发送当前为第几个部分
+    printf("s = %d\n", s);
+                    off_t offset = filesize / file.info.num * j;
+                    int ret = sendfile( fd, file_fd, &offset,
+                                filesize - filesize / file.info.num * (j-1) );
+    printf("size=%d, send=%d  %d\n", filesize, ret,filesize / file.info.num * j);
+                    close( fd );
+                    return -1;
+
+                    // printf("buffer=%s=\n",buf);
+                    // char buf[1024] = "huichuan";
+                    // int s = send(fd, buf,9,0);
+                    // printf("send=%d\n",s);
+
+                 }
             }
         }
     }
 
-    cout << "send file finished\n";
-    close( sock_fd );
-    
+    // cout << "send file finished\n";
     return 0;
 }

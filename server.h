@@ -24,8 +24,8 @@ struct file_info {
     // string filename;
     int num;  //总线程数
     int i;  //标记当前为第几个线程
-    int start;  //起始位置
-    int size;  //需要数据大小
+    // int start;  //起始位置
+    // int size;  //需要数据大小
     char buf[ BUFFER_SIZE ];  //文件内容
 };
 
@@ -34,16 +34,18 @@ public:
     int sock_fd;
     int epoll_fd;
     file_info info;
-    string filename;
+    char filename[20];
     struct sockaddr_in address;
 
     myDownload();
     // ~myDownload() {};
 
     static void * download( void * );  //客户端下载文件的工作函数
+    static void * send_file ( void * );  //服务器发送文件的工作函数
+    static void * test( void * );
     void * sendfile();
 };
 
 void err( int );
-int addfd( int, int );  //添加epoll监听socket
+int addfd( int, int, bool );  //添加epoll监听socket
 int setnonblocking( int );  //将fd设为非阻塞

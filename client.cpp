@@ -7,7 +7,7 @@ int main( int argc, char * argv[] ) {
     }
 
     myDownload file;  //待下载文件信息
-    file.filename = argv[2];
+    strcpy( file.filename, argv[2] );
     const char * ip = argv[1];
     file.info.num = atoi( argv[3] );
 
@@ -28,25 +28,21 @@ int main( int argc, char * argv[] ) {
         err( __LINE__ );
     }
 
-/* epoll */
+    /* epoll */
     epoll_event events[ MAX_EVENT_NUMBER ];  //内核事件表信息
     int epoll_fd = epoll_create( 5 );
     if ( epoll_fd < 0 ) {
         err( __LINE__ );
     }
 
-    addfd( epoll_fd, sock_fd );
-
-    //发送存储文件信息的结构体
-    ret = send( sock_fd, &file, sizeof( file ), 0 );
-    if ( ret <= 0 ) {
-        err( __LINE__ );
-    }
-// cout << ret << ' ' << sizeof( file ) << endl;
+    addfd( epoll_fd, sock_fd, false );
 
     pthread_t threads[MAX_THREAD_NUM];
     int count = 0;  //记录新开线程数
     //epoll监听
+
+    send( sock_fd, &file, sizeof( file ), 0 );  //发送所需文件信息
+
     while( count < file.info.num ) {
         ret = epoll_wait( epoll_fd, events, MAX_EVENT_NUMBER, -1 );
         if ( ret < 0 ) {
@@ -57,10 +53,7 @@ int main( int argc, char * argv[] ) {
         for( int i = 0; i < ret; i++ ) {
             int fd = events[i].data.fd;
             if ( events[i].events & EPOLLIN ) {  //有新文件信息回传
-myDownload tem;
-int r = recv( fd, &tem, sizeof( tem ), 0 );
-cout << "r = " << r << " , tem = " << tem.info.buf << endl;
-                pthread_create( &threads[count++], NULL, file.download, (void *)&file );
+                pthread_create( &threads[count++], NULL, file.test, (void *)&file );
             }
         }
     }
@@ -70,7 +63,7 @@ cout << "r = " << r << " , tem = " << tem.info.buf << endl;
         pthread_join( threads[i], NULL );
     }
 
-    // //合并文件
+    //合并文件
     // for( int i = 0; i < file.info.num; i++ ) {
         
     // }
