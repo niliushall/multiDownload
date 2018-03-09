@@ -24,6 +24,10 @@ int addfd( int epoll_fd, int fd, bool oneshot ) {
     setnonblocking( fd );
 }
 
+int tell( int fd ) {
+    return lseek( fd, 0, SEEK_CUR );
+}
+
 myDownload::myDownload() {
 
 }
@@ -54,27 +58,46 @@ void * myDownload::send_file( void *arg ) {
 
 void * myDownload::test( void * arg ) {
     myDownload *temp = (myDownload *)arg;  //调用函数传入的对象
+    myDownload file;  //接收
     int sock_fd = temp->sock_fd;
-    int n = 0, ret = 0;
+    int ret = 0;
     char tempname[10];
-    int r = recv( sock_fd, &n, sizeof( n ), 0 );  //当前为文件第几部分
-printf("recv_n = %d, r = %d\n", n, r);
-    sprintf( tempname, "temp_%d", n );
-    int file_fd = open( tempname, O_WRONLY | O_CREAT | O_TRUNC, 0774 );
+    
+    int r = recv( sock_fd, &file, sizeof( file ), 0 );
 
-    while( true ) {
-        char buf[BUFFER_SIZE] = {0};
-        ret = recv( sock_fd, buf, BUFFER_SIZE-1, 0 );
-printf("ret = %d\n", ret);
-        if ( ret < 0 ) {
-            sleep(1);
-            continue;
-        } else if ( !ret ) {
-            break;
+    /* 已接收完毕 */
+    if ( ! r ) {  //合并文件
+        char filename[100];
+        sprintf( filename, "%s_download", temp->filename );
+        int fd = open( filename, O_CREAT | O_RDWR | O_TRUNC, 0774 );
+
+        for( int i = 0; i < temp->info.num; i++ ) {
+            sprintf( tempname, "temp_%d", i );
+cout << tempname << endl;
+            off_t offset = i * temp->info.size;
+cout << "offset = " << offset << endl;
+            lseek( fd, offset, SEEK_SET );
+
+            int file_fd = open( tempname, O_RDONLY );
+            int end = lseek( file_fd, 0, SEEK_END );  //获取文件大小
+            lseek( file_fd, 0, SEEK_SET );  //移到文件开始
+            
+            while( tell( file_fd ) < end ) {
+                char buf[ BUFFER_SIZE ] = {0};
+                read( file_fd, buf, BUFFER_SIZE );
+// cout << buf << endl;
+                write( fd, buf, strlen( buf ) );
+            }
+            close( file_fd );
         }
-        printf("buf:\n%s\n", buf);
-        write( file_fd, buf, BUFFER_SIZE );
+        close( fd );
+        cout << "finish\n";
+        exit( 0 );
     }
-
+// printf("i = %d\n", file.info.i);
+    temp->info.size = file.info.size;
+    sprintf( tempname, "temp_%d", file.info.i );
+    int file_fd = open( tempname, O_WRONLY | O_CREAT | O_APPEND, 0774 );
+    write( file_fd, file.info.buf, strlen( file.info.buf ) );
     close( file_fd );
 }

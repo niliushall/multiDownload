@@ -43,7 +43,7 @@ int main( int argc, char * argv[] ) {
 
     send( sock_fd, &file, sizeof( file ), 0 );  //发送所需文件信息
 
-    while( count < file.info.num ) {
+    while( true ) {
         ret = epoll_wait( epoll_fd, events, MAX_EVENT_NUMBER, -1 );
         if ( ret < 0 ) {
             cout << "epoll_wait failure\n";
@@ -54,6 +54,8 @@ int main( int argc, char * argv[] ) {
             int fd = events[i].data.fd;
             if ( events[i].events & EPOLLIN ) {  //有新文件信息回传
                 pthread_create( &threads[count++], NULL, file.test, (void *)&file );
+            } else if ( events[i].events & EPOLLRDHUP ) {
+                cout << "EPOLLRDHUP\n";
             }
         }
     }

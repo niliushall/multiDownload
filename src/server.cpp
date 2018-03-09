@@ -59,7 +59,6 @@ int main(int argc, char * argv[]) {
                     cout << "thread " << fd << "exit\n";
                     close( fd );
                 } else {  //正常接收，返回信息
-
                     /* 获取文件大小 */
                     struct stat st;  
                     memset(&st, 0, sizeof(st));  
@@ -68,37 +67,44 @@ int main(int argc, char * argv[]) {
                     stat(filename, &st);  
                     int filesize = st.st_size;
 
+                    file.info.size = filesize / file.info.num;
+
                     /* 发送文件 */
                     int j;
                     int file_fd = open( file.filename, O_RDONLY );
                     for( j = 0; j < file.info.num - 1; j++ ) {
-                        send( fd, &j, sizeof( j ), 0 );  //发送当前为第几个部分
+                        file.info.i = j;  //发送当前为第几个部分
                         off_t offset = filesize / file.info.num * j;
-                        int ret = sendfile( fd, file_fd, &offset, filesize / file.info.num );
-                        sleep(1);
-    printf("size=%d, send=%d %d\n", filesize, ret, filesize / file.info.num);
+                        lseek( file_fd, offset, SEEK_SET );
+                        while( tell( file_fd ) < filesize / file.info.num * ( j+1 ) ) {
+                        memset( file.info.buf, 0, BUFFER_SIZE );
+                            memset( file.info.buf, 0, BUFFER_SIZE );                            
+                            read( file_fd, file.info.buf, BUFFER_SIZE );
+                            int t = send( fd, &file, sizeof( file ), 0 );
+    printf("i = %d, n = %d, filesize = %d\n", file.info.i, file.info.num, filesize );
+                            
+    sleep( 1 );
+                        }                        
+                        
                     }
 
                     /* 发送最后一部分 */
-                    int s = send( fd, &j, sizeof( j ), 0 );  //发送当前为第几个部分
-    printf("s = %d\n", s);
+                    file.info.i = j;  //发送当前为第几个部分
                     off_t offset = filesize / file.info.num * j;
-                    int ret = sendfile( fd, file_fd, &offset,
-                                filesize - filesize / file.info.num * (j-1) );
-    printf("size=%d, send=%d  %d\n", filesize, ret,filesize / file.info.num * j);
+                    lseek( file_fd, offset, SEEK_SET );
+                    while( tell( file_fd ) < filesize ) {
+                        memset( file.info.buf, 0, BUFFER_SIZE );
+                        read( file_fd, file.info.buf, BUFFER_SIZE );
+                        int t = send( fd, &file, sizeof( file ), 0 );
+    sleep( 1 );
+    printf("t_i = %d, n = %d, filesize = %d\n", file.info.i, file.info.num, filesize );
+                    }  
                     close( fd );
                     return -1;
-
-                    // printf("buffer=%s=\n",buf);
-                    // char buf[1024] = "huichuan";
-                    // int s = send(fd, buf,9,0);
-                    // printf("send=%d\n",s);
-
                  }
             }
         }
     }
 
-    // cout << "send file finished\n";
     return 0;
 }
